@@ -1,0 +1,3 @@
+roslynator_analyzers.enabled_by_default = true
+roslynator_refactorings.enabled = true
+

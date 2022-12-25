@@ -3,4 +3,4 @@ export LocalAppData="/home/monyarm/Games/SteamLibrary/compatdata/377160/pfx/driv
 project="ComicsCreator/ComicsCreator.csproj"
 game="Fallout4"
 data="/home/monyarm/Games/SteamLibrary/common/Fallout 4/Data"
-dotnet run --project "$project" --comics ./Comics --data "$data" --output ./output | tee log.log
+dotnet run --project "$project" --comics ./Comics ./Comics2 --data "$data" --output ./output | tee log.log

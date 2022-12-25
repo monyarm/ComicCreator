@@ -22,6 +22,15 @@ namespace ComicsCreator
 {
     public static class Program
     {
+        public static string GetMD5Checksum(string filename)
+        {
+            using var md5 = System.Security.Cryptography.MD5.Create();
+            using var stream = System.IO.File.OpenRead(filename);
+            var hash = md5.ComputeHash(stream);
+            return BitConverter.ToString(hash).Replace("-", "");
+        }
+        private static readonly string[] imageExtensions = new[] { "*.png", "*.jpg", ".jpeg" };
+
         private static readonly List<Task> taskList = new();
         public static async Task Main(string[] args)
         {
@@ -62,6 +71,7 @@ namespace ComicsCreator
             Directory.CreateDirectory(options.Output);
             Directory.CreateDirectory(Path.Join(options.Output, "Textures", "CustomComics"));
             Directory.CreateDirectory(Path.Join(options.Output, "Materials", "CustomComics"));
+            Directory.CreateDirectory(Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics"));
 
             outputMod.UsingLocalization = false;
             var env = GameEnvironmentBuilder<IFallout4Mod, IFallout4ModGetter>.Create(GameRelease.Fallout4).
@@ -73,23 +83,24 @@ namespace ComicsCreator
                 ChanceNone = 95
             };
 
-            var CBZ = Directory.EnumerateFiles(options.ComicsFolder, "*.cbz");
-            // Parallel.ForEach(CBZ, comic => {
-
-            //     var item = env.AddComic(comic, options);
-            //     LLComicsCreator.Entries.Add(new LeveledItemEntry()
-            //     {
-            //         Data = new LeveledItemEntryData()
-            //         {
-            //             Reference = item.ToNullableLink(),
-            //             Level = 1,
-            //             Count = 1
-            //         }
-            //     });
-            // });
+            var CBZ = options.ComicsFolder.SelectMany(x => Directory.EnumerateFiles(x, "*.cbz"));
+            var IMG = options.ComicsFolder.SelectMany(x => imageExtensions.SelectMany(y => Directory.EnumerateFiles(x, y)));
             foreach (var comic in CBZ)
             {
-                var item = AddComic(comic, options);
+                var item = AddCBZComic(comic, options);
+                LLComicsCreator.Entries.Add(new LeveledItemEntry()
+                {
+                    Data = new LeveledItemEntryData()
+                    {
+                        Reference = item.ToNullableLink(),
+                        Level = 1,
+                        Count = 1
+                    }
+                });
+            }
+            foreach (var comic in IMG)
+            {
+                var item = AddIMGComic(comic, options);
                 LLComicsCreator.Entries.Add(new LeveledItemEntry()
                 {
                     Data = new LeveledItemEntryData()
@@ -130,7 +141,7 @@ namespace ComicsCreator
 
             Directory.Delete(temp, true);
         }
-        private static IBook AddComic(string comic, Options options)
+        private static Book GenerateComic(string comic, Options options, bool isCBZ = true)
         {
             var comicName = Path.GetFileNameWithoutExtension(comic);
 
@@ -154,11 +165,14 @@ namespace ComicsCreator
                 OriginalMaterial = @"props\comicsandmagazines\grognak\grognakaprilprewar.bgsm",
                 ReplacementMaterial = $@"CustomComics\{comicName}\Cover.BGSM"
             });
-            comicMaterialSwap.Substitutions.Add(new MaterialSubstitution()
+            if (isCBZ)
             {
-                OriginalMaterial = @"Props\Grognak\GrognakAprilBackPrewar.BGSM",
-                ReplacementMaterial = $@"CustomComics\{comicName}\BackCover.BGSM"
-            });
+                comicMaterialSwap.Substitutions.Add(new MaterialSubstitution()
+                {
+                    OriginalMaterial = @"Props\Grognak\GrognakAprilBackPrewar.BGSM",
+                    ReplacementMaterial = $@"CustomComics\{comicName}\BackCover.BGSM"
+                });
+            }
             outputMod.MaterialSwaps.Add(comicMaterialSwap);
             comicItem.Model.MaterialSwap = comicMaterialSwap.ToNullableLink();
             GenerateBGSM(comicName, options);
@@ -168,7 +182,16 @@ namespace ComicsCreator
                 FeaturedItem,
                 PerkMagKeyword
             };
+            comicItem.Value = 100;
+            comicItem.InventoryArt.SetTo(RealComicsSta);
 
+            comicItem.EditorID = helper.GenerateSlug(comicName);
+            return comicItem;
+        }
+        private static Book AddCBZComic(string comic, Options options)
+        {
+            var comicName = Path.GetFileNameWithoutExtension(comic);
+            Book comicItem = GenerateComic(comic, options);
             string description = "";
             var pageCount = HandlePages(comic, comicName, options);
             for (int i = 0; i < pageCount; i++)
@@ -178,10 +201,15 @@ namespace ComicsCreator
             }
             comicItem.BookText = description;
 
-            comicItem.Value = 100;
-            comicItem.InventoryArt.SetTo(RealComicsSta);
+            outputMod.Books.Add(comicItem);
+            return comicItem;
+        }
+        private static Book AddIMGComic(string comic, Options options)
+        {
+            var comicName = Path.GetFileNameWithoutExtension(comic);
+            Book comicItem = GenerateComic(comic, options, false);
+            taskList.Add(Task.Run(() => HandleCover(comic, comic, comicName, options, "Cover_d.dds")));
 
-            comicItem.EditorID = helper.GenerateSlug(comicName);
             outputMod.Books.Add(comicItem);
             return comicItem;
         }
@@ -201,29 +229,42 @@ namespace ComicsCreator
 
                 pageCount = zip.Entries.Count;
 
-                ProcessStartInfo pro = new()
+                if (!File.Exists(Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicName, GetMD5Checksum(comic) + "_0.dds")))
                 {
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    FileName = "7z",
-                    Arguments = "x \"" + comic + "\" -o\"" + Path.Join(temp, comicName) + "\"",
-                    RedirectStandardOutput = true
-                };
-                Process? x = Process.Start(pro);
-                x!.WaitForExit();
-                taskList.Add(Task.Run(() => HandleCover(Path.Join(temp, comicName, zipEntries[0].Name), comicName, options, "Cover_d.dds")));
-                taskList.Add(Task.Run(() => HandleCover(Path.Join(temp, comicName, zipEntries.Last().Name), comicName, options, "BackCover_d.dds")));
+                    ProcessStartInfo pro = new()
+                    {
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        FileName = "7z",
+                        Arguments = "x \"" + comic + "\" -o\"" + Path.Join(temp, comicName) + "\"",
+                        RedirectStandardOutput = true
+                    };
+                    Process? x = Process.Start(pro);
+                    x!.WaitForExit();
+                }
+
+                taskList.Add(Task.Run(() => HandleCover(Path.Join(temp, comicName, zipEntries[0].Name), comic, comicName, options, "Cover_d.dds")));
+                taskList.Add(Task.Run(() => HandleCover(Path.Join(temp, comicName, zipEntries.Last().Name), comic, comicName, options, "BackCover_d.dds")));
 
                 Parallel.For(0, pageCount, i =>
                 {
                     taskList.Add(Task.Run(() =>
-                    HandlePage(Path.Join(temp, comicName, zipEntries[i].Name), comicName, options, i)));
+                    HandlePage(Path.Join(temp, comicName, zipEntries[i].Name), comic, comicName, options, i)));
                 });
             }
             return pageCount;
         }
 
-        private static void HandlePage(string entry, string comicName, Options options, int i)
+        private static void HandlePage(string entry, string comic, string comicName, Options options, int i)
         {
+            var hash = GetMD5Checksum(comic) + "_" + i;
+            var hashFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicName, hash + ".dds");
+            Directory.CreateDirectory(Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicName));
+            string output = Path.Join(options.Output, "Textures", "CustomComics", comicName, i.ToString("D3") + ".dds");
+            if (File.Exists(hashFile))
+            {
+                File.Copy(hashFile, output);
+                return;
+            }
             using Image<Rgba32> image = Image<Rgba32>.Load<Rgba32>(entry);
             image.Mutate(x => x
                  .Resize(new ResizeOptions()
@@ -234,12 +275,21 @@ namespace ComicsCreator
                      Position = AnchorPositionMode.Left
                  })
                  .Resize(1024, 1024));
-            string path = Path.Join(Path.GetDirectoryName(entry), "page_" + Path.GetFileName(entry));
-            ConvertToDDS(image, Path.Join(options.Output, "Textures", "CustomComics", comicName, i.ToString("D3") + ".dds"));
+            ConvertToDDS(image, output);
+            File.Copy(output, hashFile);
         }
 
-        private static void HandleCover(string coverPage, string comicName, Options options, string fileName)
+        private static void HandleCover(string coverPage, string comic, string comicName, Options options, string fileName)
         {
+            var hash = GetMD5Checksum(comic) + "_" + fileName;
+            var hashFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicName, hash + ".dds");
+            Directory.CreateDirectory(Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicName));
+            string output = Path.Join(options.Output, "Textures", "CustomComics", comicName, fileName);
+            if (File.Exists(hashFile))
+            {
+                File.Copy(hashFile, output);
+                return;
+            }
             using Image<Rgba32> image = Image<Rgba32>.Load<Rgba32>(coverPage);
             image.Mutate(x => x
                  .Resize(new ResizeOptions()
@@ -252,7 +302,8 @@ namespace ComicsCreator
                  .Resize(1024, 1024));
 
             string path = Path.Join(Path.GetDirectoryName(coverPage), "cover_" + Path.GetFileName(coverPage));
-            ConvertToDDS(image, Path.Join(options.Output, "Textures", "CustomComics", comicName, fileName));
+            ConvertToDDS(image, output);
+            File.Copy(output, hashFile);
         }
 
         private static void ConvertToDDS(Image<Rgba32> input, string output)

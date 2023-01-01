@@ -8,7 +8,9 @@
 
     <ItemGroup>
       <PackageReference Include="BCnEncoder.Net.ImageSharp" Version="1.1.1" />
+      <PackageReference Include="BenchmarkDotNet" Version="0.13.3" />
       <PackageReference Include="CommandLineParser" Version="2.8.0" />
+      <PackageReference Include="FastHashes" Version="3.5.0" />
       <PackageReference Include="Mutagen.Bethesda" Version="0.40-pr005" />
       <PackageReference Include="Noggog.Autofac" Version="2.50.1" />
       <PackageReference Include="SixLabors.ImageSharp" Version="2.1.3" />

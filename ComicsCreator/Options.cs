@@ -9,10 +9,13 @@ namespace ComicsCreator
         [Option("comics", HelpText = "Path to the comics folder", Required = true)]
         public IEnumerable<string> ComicsFolder { get; set; } = Array.Empty<string>();
 
-        [Option("data", HelpText = "Path to the data folder", Required = true)]
+        [Option("data", HelpText = "Path to the data folder", Required = false)]
         public string DataFolder { get; set; } = string.Empty;
 
-        [Option("output", Required = true, HelpText = "Output merge folder")]
+        [Option("output", Required = true, HelpText = "Output folder")]
         public string Output { get; set; } = string.Empty;
+
+        [Option("benchmark", HelpText = "Run Benchmark?", Required = false)]
+        public bool Benchmark { get; set; } = false;
     }
 }

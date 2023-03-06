@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using CommandLine;
+using Mutagen.Bethesda;
 
 namespace ComicsCreator
 {
     public class Options
     {
+        [Option("game", HelpText = "Game to generate comics/books for", Required = true)]
+        public GameRelease Game { get; set; } = GameRelease.Fallout4;
         [Option("comics", HelpText = "Path to the comics folder", Required = true)]
         public IEnumerable<string> ComicsFolder { get; set; } = Array.Empty<string>();
 

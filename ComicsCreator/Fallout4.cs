@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using BCnEncoder.Encoder;
 using BCnEncoder.ImageSharp;
@@ -20,7 +21,7 @@ using SixLabors.ImageSharp.Processing;
 using static ComicsCreator.Utils;
 
 namespace ComicsCreator {
-    static class Fallout4 {
+    static partial class Fallout4 {
         private static List<Action> actionList = new();
         private static readonly string CoverBGSM = @"{  'sDiffuseTexture': 'replaceMe',  'sNormalTexture': 'Props\\ComicsAndMagazinesHighRes\\ComicNormalSpec_n.DDS',  'sSmoothSpecTexture': 'Props\\ComicsAndMagazinesHighRes\\ComicNormalSpec_s.DDS',  'fRimPower': 2.0,  'fSubsurfaceLightingRolloff': 0.3,  'bSpecularEnabled': true,  'cSpecularColor': '#ffffff',  'fSpecularMult': 1.0,  'sRootMaterialPath': '',  'bCastShadows': true,  'fGrayscaleToPaletteScale': 0.5019608,  'bTileU': true,  'bTileV': true,  'fAlphaTestRef': 127}".Replace("'", "\"");
         private static readonly FormKey MiscMagazine = FormKey.Factory("1BB354:Fallout4.esm");
@@ -40,7 +41,7 @@ namespace ComicsCreator {
 
         private static readonly FormKey Container_Loot_Raider_Safe = FormKey.Factory("1B8812:Fallout4.esm");
         private static readonly ModKey outputModKey = ModKey.FromFileName("ComicsCreator.esp");
-        private static readonly Fallout4Mod outputMod = new(outputModKey);
+        private static readonly Fallout4Mod outputMod = new(outputModKey, Fallout4Release.Fallout4);
 
         private static readonly List<FormKey> LLFormKeys = new List<FormKey>
             {
@@ -60,10 +61,10 @@ namespace ComicsCreator {
             WithTargetDataFolder(options.DataFolder).
             WithOutputMod(outputMod).Build() : GameEnvironmentBuilder<IFallout4Mod, IFallout4ModGetter>.Create(GameRelease.Fallout4).
             WithOutputMod(outputMod).Build();
-            var LLComicsCreator = new LeveledItem(outputMod.GetNextFormKey())
+            var LLComicsCreator = new LeveledItem(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
             {
                 EditorID = "ComicsCreatorLL",
-                Entries = new Noggog.ExtendedList<LeveledItemEntry>(),
+                Entries = new ExtendedList<LeveledItemEntry>(),
                 ChanceNone = 95
             };
 
@@ -134,7 +135,7 @@ namespace ComicsCreator {
         {
             if (LLComicsCreator.Entries.Count > 255)
             {
-                var entries = new Noggog.ExtendedList<LeveledItemEntry>();
+                var entries = new ExtendedList<LeveledItemEntry>();
                 var count = LLComicsCreator.Entries.Count;
                 for (var n = 0; count > 255; n++)
                 {
@@ -143,10 +144,10 @@ namespace ComicsCreator {
                     var last = LLComicsCreator.Entries.TakeLast(255);
                     LLComicsCreator.Entries.RemoveRange(count, 255);
 
-                    LeveledItem record = new(outputMod.GetNextFormKey())
+                    LeveledItem record = new(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
                     {
                         EditorID = "ComicsCreatorLL" + n,
-                        Entries = new Noggog.ExtendedList<LeveledItemEntry>(last)
+                        Entries = new ExtendedList<LeveledItemEntry>(last)
                     };
                     entries.Add(new LeveledItemEntry()
                     {
@@ -172,7 +173,7 @@ namespace ComicsCreator {
             Directory.CreateDirectory(Path.Join(options.Output, "Materials", "CustomComics", slug));
             Directory.CreateDirectory(Path.Join(options.Output, "Textures", "CustomComics", slug));
 
-            var comicItem = new Book(outputMod.GetNextFormKey());
+            var comicItem = new Book(outputMod.GetNextFormKey(), Fallout4Release.Fallout4);
             comicItem.PreviewTransform.SetTo(MiscMagazine);
             comicItem.Name = comicName;
             comicItem.Model = new Model
@@ -180,7 +181,7 @@ namespace ComicsCreator {
                 File = @"Props\GrognarComic\Comic_GrognarMar_Prewar.nif"
             };
 
-            var comicMaterialSwap = new MaterialSwap(outputMod.GetNextFormKey())
+            var comicMaterialSwap = new MaterialSwap(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
             {
                 EditorID = slug + "_SWAP"
             };
@@ -206,13 +207,13 @@ namespace ComicsCreator {
             comicItem.Model.MaterialSwap = comicMaterialSwap.ToNullableLink();
             GenerateBGSM(slug, options);
 
-            comicItem.Keywords = new Noggog.ExtendedList<IFormLinkGetter<IKeywordGetter>>
+            comicItem.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
             {
                 FeaturedItem,
                 PerkMagKeyword
             };
             comicItem.Value = 100;
-            var comicStatic = new Static(outputMod.GetNextFormKey())
+            var comicStatic = new Static(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
             {
                 EditorID = slug + "_SWAP",
                 ObjectBounds = new ObjectBounds()
@@ -282,8 +283,8 @@ namespace ComicsCreator {
                 var zipEntries = zip.Entries.ToList();
                 zipEntries.Sort(Comparer<ZipArchiveEntry>.Create((x, y) =>
                 {
-                    var xName = int.Parse(Path.GetFileNameWithoutExtension(x.Name));
-                    var yName = int.Parse(Path.GetFileNameWithoutExtension(y.Name));
+                    var xName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(x.Name)).Value);
+                    var yName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(y.Name)).Value);
                     return xName > yName ? 1 : xName < yName ? -1 : 0;
                 }));
 
@@ -329,7 +330,7 @@ namespace ComicsCreator {
                 return;
             }
             Console.WriteLine("Processing Page " + i + " of " + slug);
-            using Image<Rgba32> image = Image<Rgba32>.Load<Rgba32>(entry);
+            using Image<Rgba32> image = Image.Load<Rgba32>(entry);
             image.Mutate(x => x
                  .Resize(image.Height, 476 / 617 * image.Height)
                  .Resize(new ResizeOptions()
@@ -356,7 +357,7 @@ namespace ComicsCreator {
                 return;
             }
             Console.WriteLine("Processing Cover of " + slug);
-            using Image<Rgba32> image = Image<Rgba32>.Load<Rgba32>(coverPage);
+            using Image<Rgba32> image = Image.Load<Rgba32>(coverPage);
             image.Mutate(x => x
                  .Resize(image.Height, 476 / 617 * image.Height)
                  .Resize(new ResizeOptions()
@@ -394,5 +395,8 @@ namespace ComicsCreator {
             var backCover = CoverBGSM.Replace("replaceMe", @"CustomComics\\" + slug + @"\\BackCover_d.dds");
             File.WriteAllText(Path.Join(options.Output, "Materials", "CustomComics", slug, "BackCover.BGSM"), backCover);
         }
+
+        [GeneratedRegex("\\d*$")]
+        private static partial Regex DigitSuffixRegex();
     }
 }

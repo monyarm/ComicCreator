@@ -39,9 +39,14 @@ namespace ComicsCreator
             }
             if (Directory.Exists(options.Output))
             {
-                Directory.Delete(Path.Join(options.Output, "Materials"), true);
-                Directory.Delete(Path.Join(options.Output, "Textures"), true);
+                if (Directory.Exists(Path.Join(options.Output, "Materials"))){
+                    Directory.Delete(Path.Join(options.Output, "Materials"), true);
+                }
+                if (Directory.Exists(Path.Join(options.Output, "Textures"))){
+                    Directory.Delete(Path.Join(options.Output, "Textures"), true);
+                }
                 File.Delete(Path.Join(options.Output, "ComicsCreator.esp"));
+                File.Delete(Path.Join(options.Output, "ComicsCreator_SWAP.ini"));
             }
             Directory.CreateDirectory(options.Output);
             Directory.CreateDirectory(Path.Join(options.Output, "Textures"));
@@ -53,9 +58,9 @@ namespace ComicsCreator
             if (options.Game == GameRelease.Fallout4) {
                 Fallout4.Parse(options);
             }
-            else if (options.Game != GameRelease.Oblivion)
+            else if (options.Game == GameRelease.SkyrimSE)
             {
-                //Skyrim.Parse(options);
+                Skyrim.Parse(options);
             }
 
             Directory.Delete(temp, true);

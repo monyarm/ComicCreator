@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Numerics;
 using BCnEncoder.Encoder;
 using BCnEncoder.ImageSharp;
 using BCnEncoder.Shared;
@@ -20,10 +21,13 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using static ComicsCreator.Utils;
 
-namespace ComicsCreator {
-    static partial class Fallout4 {
+namespace ComicsCreator
+{
+    static partial class Fallout4
+    {
         private static List<Action> actionList = new();
         private static readonly string CoverBGSM = @"{  'sDiffuseTexture': 'replaceMe',  'sNormalTexture': 'Props\\ComicsAndMagazinesHighRes\\ComicNormalSpec_n.DDS',  'sSmoothSpecTexture': 'Props\\ComicsAndMagazinesHighRes\\ComicNormalSpec_s.DDS',  'fRimPower': 2.0,  'fSubsurfaceLightingRolloff': 0.3,  'bSpecularEnabled': true,  'cSpecularColor': '#ffffff',  'fSpecularMult': 1.0,  'sRootMaterialPath': '',  'bCastShadows': true,  'fGrayscaleToPaletteScale': 0.5019608,  'bTileU': true,  'bTileV': true,  'fAlphaTestRef': 127}".Replace("'", "\"");
+        private static readonly string BOS_SWAP = @"[Forms]\n;ComicBurnt01\n0x132974~Fallout4.esm|replaceMe|NONE|chanceR(10)\n\n;ComicBurnt02\n0x132977~Fallout4.esm|replaceMe|NONE|chanceR(10)\n\n;ComicBurnt03\n0x132979~Fallout4.esm|replaceMe|NONE|chanceR(10)";
         private static readonly FormKey MiscMagazine = FormKey.Factory("1BB354:Fallout4.esm");
         private static readonly FormKey MiscMagazine_Fix = FormKey.Factory("1E2EAD:Fallout4.esm");
         private static readonly FormKey FeaturedItem = FormKey.Factory("1B3FAC:Fallout4.esm");
@@ -40,6 +44,9 @@ namespace ComicsCreator {
         private static readonly FormKey Container_Loot_Trunk = FormKey.Factory("0D6E66:Fallout4.esm");
 
         private static readonly FormKey Container_Loot_Raider_Safe = FormKey.Factory("1B8812:Fallout4.esm");
+        private static FormKey RealComicsSta = FormKey.Factory("001734:RealComics.esp");
+        private static Image<Rgba32> template = Image.Load<Rgba32>(
+            File.ReadAllBytes(System.AppContext.BaseDirectory + "/template.png"));
         private static readonly ModKey outputModKey = ModKey.FromFileName("ComicsCreator.esp");
         private static readonly Fallout4Mod outputMod = new(outputModKey, Fallout4Release.Fallout4);
 
@@ -53,6 +60,8 @@ namespace ComicsCreator {
                 Container_Loot_Trunk,
                 Container_Loot_Raider_Safe
             };
+
+        public static List<String> ComicList { get; private set; } = new();
 
         public static void Parse(Options options)
         {
@@ -82,6 +91,7 @@ namespace ComicsCreator {
                         Count = 1
                     }
                 });
+                ComicList.Add(item.EditorID);
             }
             foreach (var comic in IMG)
             {
@@ -95,6 +105,7 @@ namespace ComicsCreator {
                         Count = 1
                     }
                 });
+                ComicList.Add(item.EditorID);
             }
 
             try
@@ -108,6 +119,7 @@ namespace ComicsCreator {
 
             AddToLeveledLists(env, LLComicsCreator, LLFormKeys);
             SplitLeveledList(LLComicsCreator, outputMod);
+            GenerateSWAP(options.Output);
 
             // await Task.WhenAll(taskList);
 
@@ -155,7 +167,8 @@ namespace ComicsCreator {
                         {
                             Reference = record.ToNullableLink(),
                             Level = 1,
-                            Count = 1
+                            Count = 1,
+                            ChanceNone = new Percent(95)
                         }
                     });
                     outputMod.LeveledItems.Add(record);
@@ -176,9 +189,26 @@ namespace ComicsCreator {
             var comicItem = new Book(outputMod.GetNextFormKey(), Fallout4Release.Fallout4);
             comicItem.PreviewTransform.SetTo(MiscMagazine);
             comicItem.Name = comicName;
+            comicItem.TextOffsetX = 0;
+            comicItem.TextOffsetY = 7;
+            comicItem.ObjectBounds = new ObjectBounds()
+            {
+                First = new P3Int16()
+                {
+                    X = -9,
+                    Y = -7,
+                    Z = 0
+                },
+                Second = new P3Int16()
+                {
+                    X = 10,
+                    Y = 8,
+                    Z = 0
+                }
+            };
             comicItem.Model = new Model
             {
-                File = @"Props\GrognarComic\Comic_GrognarMar_Prewar.nif"
+                File = @"Props\GrognakComic\Comic_GrognakFeb.nif"
             };
 
             var comicMaterialSwap = new MaterialSwap(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
@@ -187,19 +217,14 @@ namespace ComicsCreator {
             };
             comicMaterialSwap.Substitutions.Add(new MaterialSubstitution()
             {
-                OriginalMaterial = @"props\comicsandmagazines\grognak\grognakaprilprewar.bgsm",
-                ReplacementMaterial = $@"CustomComics\{slug}\Cover.BGSM"
-            });
-            comicMaterialSwap.Substitutions.Add(new MaterialSubstitution()
-            {
-                OriginalMaterial = @"Props\ComicsAndMagazinesHighRes\AwesomeTales\AwesomeTales1.BGSM",
+                OriginalMaterial = @"Props\ComicsAndMagazines\Grognak\GrognakFeb.bgsm",
                 ReplacementMaterial = $@"CustomComics\{slug}\Cover.BGSM"
             });
             if (isCBZ)
             {
                 comicMaterialSwap.Substitutions.Add(new MaterialSubstitution()
                 {
-                    OriginalMaterial = @"Props\Grognak\GrognakAprilBackPrewar.BGSM",
+                    OriginalMaterial = @"Props\ComicsAndMagazines\Backside\ComicBackGreen.BGSM",
                     ReplacementMaterial = $@"CustomComics\{slug}\BackCover.BGSM"
                 });
             }
@@ -213,40 +238,18 @@ namespace ComicsCreator {
                 PerkMagKeyword
             };
             comicItem.Value = 100;
-            var comicStatic = new Static(outputMod.GetNextFormKey(), Fallout4Release.Fallout4)
-            {
-                EditorID = slug + "_SWAP",
-                ObjectBounds = new ObjectBounds()
-                {
-                    First = new P3Int16()
-                    {
-                        X = -8,
-                        Y = -11,
-                        Z = 0
-                    },
-                    Second = new P3Int16()
-                    {
-                        X = 8,
-                        Y = 12,
-                        Z = 0
-                    }
-                },
-                Model = new Model()
-                {
-                    File = @"Interface\ComicsAndMagazines\ComicHighRes01.nif",
-                    MaterialSwap = comicMaterialSwap.ToNullableLink()
-                },
-                MaxAngle = 90,
-                LeafAmplitude = 1,
-                LeafFrequency = 1
-            };
-            comicStatic.PreviewTransform.SetTo(MiscMagazine_Fix);
-            outputMod.Statics.Add(comicStatic);
-            comicItem.InventoryArt.SetTo(comicStatic);
+            comicItem.InventoryArt.SetTo(RealComicsSta);
 
             comicItem.EditorID = slug;
             return comicItem;
         }
+
+        private static void GenerateSWAP(string outDir)
+        {
+            var contents = BOS_SWAP.Replace("replaceMe", string.Join(',', ComicList));
+            File.WriteAllText(Path.Join(outDir, "ComicsCreator_SWAP.ini"), contents);
+        }
+
         private static Book AddCBZComic(string comic, Options options)
         {
             var comicName = Path.GetFileNameWithoutExtension(comic);
@@ -257,7 +260,8 @@ namespace ComicsCreator {
             for (int i = 0; i < pageCount; i++)
             {
                 description += $"<img src='img://CustomComics/{slug}/{i:D3}.dds' height='431' width='415'>\n";
-                description += "[pagebreak]\n";
+                if (i != pageCount - 1)
+                    description += "[pagebreak]\n";
             }
             comicItem.BookText = description;
 
@@ -269,7 +273,7 @@ namespace ComicsCreator {
             var comicName = Path.GetFileNameWithoutExtension(comic);
             var slug = helper.GenerateSlug(comicName);
             Book comicItem = GenerateComic(comic, options, false);
-            actionList.Add( () => HandleCover(comic, GetHash(comic), slug, options, "Cover_d.dds"));
+            actionList.Add(() => HandleCover(comic, GetHash(comic), slug, options, "Cover_d.dds"));
 
             outputMod.Books.Add(comicItem);
             return comicItem;
@@ -280,13 +284,6 @@ namespace ComicsCreator {
             var pageCount = 0;
             using (ZipArchive zip = ZipFile.Open(comic, ZipArchiveMode.Read))
             {
-                var zipEntries = zip.Entries.ToList();
-                zipEntries.Sort(Comparer<ZipArchiveEntry>.Create((x, y) =>
-                {
-                    var xName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(x.Name)).Value);
-                    var yName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(y.Name)).Value);
-                    return xName > yName ? 1 : xName < yName ? -1 : 0;
-                }));
 
                 pageCount = zip.Entries.Count;
 
@@ -304,6 +301,28 @@ namespace ComicsCreator {
                     Process? x = Process.Start(pro);
                     x!.WaitForExit();
                 }
+                else
+                {
+                    for (int i = 0; i < pageCount; i++)
+                    {
+                        var index = i;
+                        actionList.Add(() => CopyFromCache(hash, slug, options, index));
+                    }
+                    actionList.Add(() => CopyFromCache(hash, slug, options, -1, true, "Cover_d.dds"));
+                    actionList.Add(() => CopyFromCache(hash, slug, options, -1, true, "BackCover_d.dds"));
+                
+                    return pageCount;
+                }
+
+                var zipEntries = zip.Entries.ToList();
+
+                zipEntries.Sort(Comparer<ZipArchiveEntry>.Create((x, y) =>
+                {
+                    var xName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(x.Name)).Value);
+                    var yName = int.Parse(DigitSuffixRegex().Match(Path.GetFileNameWithoutExtension(y.Name)).Value);
+                    return xName > yName ? 1 : xName < yName ? -1 : 0;
+                }));
+
                 actionList.Add(() => HandleCover(Path.Join(temp, slug, zipEntries[0].Name), hash, slug, options, "Cover_d.dds"));
                 actionList.Add(() => HandleCover(Path.Join(temp, slug, zipEntries.Last().Name), hash, slug, options, "BackCover_d.dds"));
                 for (int i = 0; i < pageCount; i++)
@@ -319,28 +338,43 @@ namespace ComicsCreator {
             return pageCount;
         }
 
+        private static void CopyFromCache(string pageHash, string comicSlug, Options options, int index, bool isPage = true, string coverName = "")
+        {
+
+            var hash = pageHash + "_" + (isPage ? index.ToString() : coverName);
+            var hashFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", comicSlug, hash + ".dds");
+            string output = Path.Join(options.Output, "Textures", "CustomComics", comicSlug, isPage ? index.ToString("D3") + ".dds" : coverName);
+            if (File.Exists(hashFile))
+            {
+                //File.Copy(hashFile, output);
+                File.CreateSymbolicLink(output, hashFile);
+                return;
+            }
+        }
+
         private static void HandlePage(string entry, string _hash, string slug, Options options, int i)
         {
             var hash = _hash + "_" + i;
             var hashFile = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CustomComics", slug, hash + ".dds");
             string output = Path.Join(options.Output, "Textures", "CustomComics", slug, i.ToString("D3") + ".dds");
-            if (File.Exists(hashFile))
-            {
-                File.Copy(hashFile, output);
-                return;
-            }
+            CopyFromCache(_hash, slug, options, i);
             Console.WriteLine("Processing Page " + i + " of " + slug);
-            using Image<Rgba32> image = Image.Load<Rgba32>(entry);
+            Image<Rgba32> image = Image.Load<Rgba32>(entry);
+            var power = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(image.Height, image.Width));
             image.Mutate(x => x
-                 .Resize(image.Height, 476 / 617 * image.Height)
-                 .Resize(new ResizeOptions()
-                 {
-                     Mode = ResizeMode.Pad,
-                     Size = new SixLabors.ImageSharp.Size(image.Height),
-                     PadColor = Color.Transparent,
-                     Position = AnchorPositionMode.Left
-                 })
-                 .Resize(1024, 1024));
+             .Resize(new ResizeOptions()
+             {
+                 Mode = ResizeMode.Stretch,
+                 Size = new SixLabors.ImageSharp.Size((int)((730f / 1024f) * image.Height), image.Height)
+             })
+             .Resize(new ResizeOptions()
+             {
+                 Mode = ResizeMode.Pad,
+                 Size = new SixLabors.ImageSharp.Size(image.Height),
+                 PadColor = Color.Black,
+                 Position = AnchorPositionMode.Left
+             })
+             .Resize(power, power));
             ConvertToDDS(image, output);
             File.Copy(output, hashFile);
         }
@@ -353,23 +387,30 @@ namespace ComicsCreator {
             string output = Path.Join(options.Output, "Textures", "CustomComics", slug, fileName);
             if (File.Exists(hashFile))
             {
-                File.Copy(hashFile, output);
+                //File.Copy(hashFile, output);
+                File.CreateSymbolicLink(output, hashFile);
                 return;
             }
             Console.WriteLine("Processing Cover of " + slug);
-            using Image<Rgba32> image = Image.Load<Rgba32>(coverPage);
+            Image<Rgba32> image = Image.Load<Rgba32>(coverPage);
+            var power = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(image.Height, image.Width));
             image.Mutate(x => x
-                 .Resize(image.Height, 476 / 617 * image.Height)
-                 .Resize(new ResizeOptions()
-                 {
-                     Mode = ResizeMode.Pad,
-                     Size = new SixLabors.ImageSharp.Size(image.Height),
-                     PadColor = Color.Transparent,
-                     Position = AnchorPositionMode.Right
-                 })
-                 .Resize(1024, 1024));
-
-            string path = Path.Join(Path.GetDirectoryName(coverPage), "cover_" + Path.GetFileName(coverPage));
+             .Resize(new ResizeOptions()
+             {
+                 Mode = ResizeMode.Stretch,
+                 Size = new SixLabors.ImageSharp.Size((int)((1670f / 2048f * image.Height)), image.Height)
+             })
+             .Resize(new ResizeOptions()
+             {
+                 Mode = ResizeMode.Pad,
+                 Size = new SixLabors.ImageSharp.Size(image.Height),
+                 PadColor = Color.White,
+                 Position = AnchorPositionMode.Right
+             })
+             .Resize(power, power)
+             .DrawImage(template, 1)
+             );
+            string path = Path.Join(Path.GetDirectoryName(coverPage), "Cover_" + Path.GetFileName(coverPage));
             ConvertToDDS(image, output);
             File.Copy(output, hashFile);
         }
@@ -379,9 +420,9 @@ namespace ComicsCreator {
             // Image<Rgba32> coverPNG = Image.Load<Rgba32>(input);
             BcEncoder encoder = new();
 
-            encoder.OutputOptions.GenerateMipMaps = true;
-            encoder.OutputOptions.Quality = CompressionQuality.Fast;
-            encoder.OutputOptions.Format = CompressionFormat.Bc3;
+            encoder.OutputOptions.GenerateMipMaps = false;
+            encoder.OutputOptions.Quality = CompressionQuality.Balanced;
+            encoder.OutputOptions.Format = CompressionFormat.Bc1;
             encoder.OutputOptions.FileFormat = OutputFileFormat.Dds; //Change to Dds for a dds file.
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             using FileStream fs = File.OpenWrite(output);
